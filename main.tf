@@ -55,7 +55,7 @@ locals {
 
   template_gitlab_runner = templatefile("${path.module}/template/gitlab-runner.tftpl",
     {
-      aws_region                                                   = data.aws_region.current.name
+      aws_region                                                   = data.aws_region.current.region
       gitlab_runner_version                                        = var.runner_gitlab.runner_version
       docker_machine_version                                       = var.runner_install.docker_machine_version
       docker_machine_download_url                                  = var.runner_install.docker_machine_download_url
@@ -75,7 +75,7 @@ locals {
       secure_parameter_store_runner_sentry_dsn                     = local.secure_parameter_store_runner_sentry_dsn
       use_eip                                                      = var.runner_instance.use_eip
       secure_parameter_store_gitlab_token_name                     = var.runner_gitlab.access_token_secure_parameter_store_name
-      secure_parameter_store_region                                = data.aws_region.current.name
+      secure_parameter_store_region                                = data.aws_region.current.region
       gitlab_runner_registration_token                             = var.runner_gitlab_registration_config.registration_token
       gitlab_runner_description                                    = var.runner_gitlab_registration_config["description"]
       gitlab_runner_tag_list                                       = var.runner_gitlab_registration_config["tag_list"]
@@ -87,8 +87,13 @@ locals {
       gitlab_runner_project_id                                     = var.runner_gitlab_registration_config["project_id"]
       gitlab_runner_access_level                                   = var.runner_gitlab_registration_config.access_level
       sentry_dsn                                                   = var.runner_manager.sentry_dsn
+      # private_key_pem is sensitive; nonsensitive() is required here to avoid a
+      # templatefile "inconsistent result" error during Terraform's post-apply
+      # consistency check. The key is already stored unencrypted in state and will
+      # be embedded in EC2 user data when use_private_key = true, so stripping
+      # the sensitive marker in this expression is safe and intentional.
       public_key                                                   = var.runner_worker.use_private_key && var.runner_worker.type == "docker-autoscaler" ? tls_private_key.autoscaler[0].public_key_openssh : var.runner_worker_docker_machine_fleet.enable == true ? tls_private_key.fleet[0].public_key_openssh : ""
-      private_key                                                  = var.runner_worker.use_private_key && var.runner_worker.type == "docker-autoscaler" ? tls_private_key.autoscaler[0].private_key_pem : var.runner_worker_docker_machine_fleet.enable == true ? tls_private_key.fleet[0].private_key_pem : ""
+      private_key                                                  = var.runner_worker.use_private_key && var.runner_worker.type == "docker-autoscaler" ? nonsensitive(tls_private_key.autoscaler[0].private_key_pem) : var.runner_worker_docker_machine_fleet.enable == true ? nonsensitive(tls_private_key.fleet[0].private_key_pem) : ""
       use_private_key                                              = var.runner_worker_docker_machine_fleet.enable || (var.runner_worker.use_private_key && var.runner_worker.type == "docker-autoscaler")
       use_new_fleeting_install                                     = local.runner_use_new_fleeting_install
       use_new_runner_authentication_gitlab_16                      = var.runner_gitlab_registration_config.type != ""
@@ -121,7 +126,7 @@ locals {
 
   template_runner_config = templatefile("${path.module}/template/runner-config.tftpl",
     {
-      aws_region       = data.aws_region.current.name
+      aws_region       = data.aws_region.current.region
       gitlab_url       = var.runner_gitlab.url
       gitlab_clone_url = var.runner_gitlab.url_clone
       tls_ca_file      = length(var.runner_gitlab.certificate) > 0 ? "tls-ca-file=\"/etc/gitlab-runner/certs/gitlab.crt\"" : ""
